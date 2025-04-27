@@ -1,5 +1,6 @@
 // This file declare OpenGL ES methods for streaming
 
+#include <dlfcn.h>
 #include "gls_command_gles2.h"
 #include "glclient.h"
 #include "fastlog.h"
@@ -8,6 +9,151 @@
 #include <GLES2/gl2ext.h>
 
 #include <assert.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+
+// Declare the SwiftShader library handle
+static void* swiftshader_lib_handle = NULL;
+
+// Typedefs for SwiftShader GLESv2 function pointers
+typedef void (*PFNGLBLENDCOLORPROC)(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
+typedef void (*PFNGLBLENDEQUATIONPROC)(GLenum mode);
+typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC)(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const GLvoid *data);
+typedef void (*PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const GLvoid *data);
+typedef void (*PFNGLCOPYTEXIMAGE2DPROC)(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border);
+typedef void (*PFNGLDETACHSHADERPROC)(GLuint program, GLuint shader);
+typedef void (*PFNGLFINISHPROC)(void);
+typedef void (*PFNGLFRONTFACEPROC)(GLenum mode);
+typedef void (*PFNGLGETATTACHEDSHADERSPROC)(GLuint program, GLsizei maxcount, GLsizei *count, GLuint *shaders);
+typedef void (*PFNGLGETBOOLEANVPROC)(GLenum pname, GLboolean *params);
+typedef void (*PFNGLGETBUFFERPARAMETERIVPROC)(GLenum target, GLenum pname, GLint *params);
+typedef void (*PFNGLGETFRAMEBUFFERATTACHMENTPARAMETERIVPROC)(GLenum target, GLenum attachment, GLenum pname, GLint *params);
+typedef void (*PFNGLGETRENDERBUFFERPARAMETERIVPROC)(GLenum target, GLenum pname, GLint *params);
+typedef void (*PFNGLGETTEXPARAMETERFVPROC)(GLenum target, GLenum pname, GLfloat *params);
+typedef void (*PFNGLGETTEXPARAMETERIVPROC)(GLenum target, GLenum pname, GLint *params);
+typedef void (*PFNGLGETUNIFORMFVPROC)(GLuint program, GLint location, GLfloat *params);
+typedef void (*PFNGLGETUNIFORMIVPROC)(GLuint program, GLint location, GLint *params);
+typedef void (*PFNGLGETVERTEXATTRIBFVPROC)(GLuint index, GLenum pname, GLfloat *params);
+typedef void (*PFNGLGETVERTEXATTRIBIVPROC)(GLuint index, GLenum pname, GLint *params);
+typedef void (*PFNGLGETVERTEXATTRIBPOINTERVPROC)(GLuint index, GLenum pname, GLvoid **pointer);
+typedef GLboolean (*PFNGLISFRAMEBUFFERPROC)(GLuint framebuffer);
+typedef GLboolean (*PFNGLISPROGRAMPROC)(GLuint program);
+typedef GLboolean (*PFNGLISRENDERBUFFERPROC)(GLuint renderbuffer);
+typedef GLboolean (*PFNGLISSHADERPROC)(GLuint shader);
+typedef GLboolean (*PFNGLISTEXTUREPROC)(GLuint texture);
+typedef void (*PFNGLRELEASESHADERCOMPILERPROC)(void);
+typedef void (*PFNGLSAMPLECOVERAGEPROC)(GLclampf value, GLboolean invert);
+typedef void (*PFNGLSCISSORPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
+typedef void (*PFNGLSHADERBINARYPROC)(GLsizei n, const GLuint *shaders, GLenum binaryformat, const GLvoid *binary, GLsizei length);
+typedef void (*PFNGLSTENCILFUNCSEPARATEPROC)(GLenum face, GLenum func, GLint ref, GLuint mask);
+typedef void (*PFNGLSTENCILMASKSEPARATEPROC)(GLenum face, GLuint mask);
+typedef void (*PFNGLSTENCILOPSEPARATEPROC)(GLenum face, GLenum fail, GLenum zfail, GLenum zpass);
+typedef void (*PFNGLTEXPARAMETERFPROC)(GLenum target, GLenum pname, GLfloat param);
+typedef void (*PFNGLTEXPARAMETERFVPROC)(GLenum target, GLenum pname, const GLfloat *params);
+typedef void (*PFNGLVALIDATEPROGRAMPROC)(GLuint program);
+
+// Function pointers for SwiftShader GLESv2 functions
+static PFNGLBLENDCOLORPROC swiftshader_glBlendColor = NULL;
+static PFNGLBLENDEQUATIONPROC swiftshader_glBlendEquation = NULL;
+static PFNGLCOMPRESSEDTEXIMAGE2DPROC swiftshader_glCompressedTexImage2D = NULL;
+static PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC swiftshader_glCompressedTexSubImage2D = NULL;
+static PFNGLCOPYTEXIMAGE2DPROC swiftshader_glCopyTexImage2D = NULL;
+static PFNGLDETACHSHADERPROC swiftshader_glDetachShader = NULL;
+static PFNGLFINISHPROC swiftshader_glFinish = NULL;
+static PFNGLFRONTFACEPROC swiftshader_glFrontFace = NULL;
+static PFNGLGETATTACHEDSHADERSPROC swiftshader_glGetAttachedShaders = NULL;
+static PFNGLGETBOOLEANVPROC swiftshader_glGetBooleanv = NULL;
+static PFNGLGETBUFFERPARAMETERIVPROC swiftshader_glGetBufferParameteriv = NULL;
+static PFNGLGETFRAMEBUFFERATTACHMENTPARAMETERIVPROC swiftshader_glGetFramebufferAttachmentParameteriv = NULL;
+static PFNGLGETRENDERBUFFERPARAMETERIVPROC swiftshader_glGetRenderbufferParameteriv = NULL;
+static PFNGLGETTEXPARAMETERFVPROC swiftshader_glGetTexParameterfv = NULL;
+static PFNGLGETTEXPARAMETERIVPROC swiftshader_glGetTexParameteriv = NULL;
+static PFNGLGETUNIFORMFVPROC swiftshader_glGetUniformfv = NULL;
+static PFNGLGETUNIFORMIVPROC swiftshader_glGetUniformiv = NULL;
+static PFNGLGETVERTEXATTRIBFVPROC swiftshader_glGetVertexAttribfv = NULL;
+static PFNGLGETVERTEXATTRIBIVPROC swiftshader_glGetVertexAttribiv = NULL;
+static PFNGLGETVERTEXATTRIBPOINTERVPROC swiftshader_glGetVertexAttribPointerv = NULL;
+static PFNGLISFRAMEBUFFERPROC swiftshader_glIsFramebuffer = NULL;
+static PFNGLISPROGRAMPROC swiftshader_glIsProgram = NULL;
+static PFNGLISRENDERBUFFERPROC swiftshader_glIsRenderbuffer = NULL;
+static PFNGLISSHADERPROC swiftshader_glIsShader = NULL;
+static PFNGLISTEXTUREPROC swiftshader_glIsTexture = NULL;
+static PFNGLRELEASESHADERCOMPILERPROC swiftshader_glReleaseShaderCompiler = NULL;
+static PFNGLSAMPLECOVERAGEPROC swiftshader_glSampleCoverage = NULL;
+static PFNGLSCISSORPROC swiftshader_glScissor = NULL;
+static PFNGLSHADERBINARYPROC swiftshader_glShaderBinary = NULL;
+static PFNGLSTENCILFUNCSEPARATEPROC swiftshader_glStencilFuncSeparate = NULL;
+static PFNGLSTENCILMASKSEPARATEPROC swiftshader_glStencilMaskSeparate = NULL;
+static PFNGLSTENCILOPSEPARATEPROC swiftshader_glStencilOpSeparate = NULL;
+static PFNGLTEXPARAMETERFPROC swiftshader_glTexParameterf = NULL;
+static PFNGLTEXPARAMETERFVPROC swiftshader_glTexParameterfv = NULL;
+static PFNGLVALIDATEPROGRAMPROC swiftshader_glValidateProgram = NULL;
+
+// Function to load SwiftShader's GLESv2 library
+static void load_swiftshader_glesv2()
+{
+  swiftshader_lib_handle = dlopen("libGLESv2SS.so", RTLD_LAZY);
+  if (!swiftshader_lib_handle) {
+    LOGE("Failed to load libGLESv2SS.so: %s\n", dlerror());
+    return;
+  }
+
+#define LOAD_FUNC(func)                                                                     \
+  swiftshader_##func = (PFNGL##func##PROC)dlsym(swiftshader_lib_handle, #func);           \
+  if (!swiftshader_##func) {                                                                 \
+    LOGW("Function %s not found in libGLESv2SS.so: %s\n", #func, dlerror()); \
+  }
+
+  LOAD_FUNC(glBlendColor);
+  LOAD_FUNC(glBlendEquation);
+  LOAD_FUNC(glCompressedTexImage2D);
+  LOAD_FUNC(glCompressedTexSubImage2D);
+  LOAD_FUNC(glCopyTexImage2D);
+  LOAD_FUNC(glDetachShader);
+  LOAD_FUNC(glFinish);
+  LOAD_FUNC(glFrontFace);
+  LOAD_FUNC(glGetAttachedShaders);
+  LOAD_FUNC(glGetBooleanv);
+  LOAD_FUNC(glGetBufferParameteriv);
+  LOAD_FUNC(glGetFramebufferAttachmentParameteriv);
+  LOAD_FUNC(glGetRenderbufferParameteriv);
+  LOAD_FUNC(glGetTexParameterfv);
+  LOAD_FUNC(glGetTexParameteriv);
+  LOAD_FUNC(glGetUniformfv);
+  LOAD_FUNC(glGetUniformiv);
+  LOAD_FUNC(glGetVertexAttribfv);
+  LOAD_FUNC(glGetVertexAttribiv);
+  LOAD_FUNC(glGetVertexAttribPointerv);
+  LOAD_FUNC(glIsFramebuffer);
+  LOAD_FUNC(glIsProgram);
+  LOAD_FUNC(glIsRenderbuffer);
+  LOAD_FUNC(glIsShader);
+  LOAD_FUNC(glIsTexture);
+  LOAD_FUNC(glReleaseShaderCompiler);
+  LOAD_FUNC(glSampleCoverage);
+  LOAD_FUNC(glScissor);
+  LOAD_FUNC(glShaderBinary);
+  LOAD_FUNC(glStencilFuncSeparate);
+  LOAD_FUNC(glStencilMaskSeparate);
+  LOAD_FUNC(glStencilOpSeparate);
+  LOAD_FUNC(glTexParameterf);
+  LOAD_FUNC(glTexParameterfv);
+  LOAD_FUNC(glValidateProgram);
+#undef LOAD_FUNC
+}
+
+// Function to close SwiftShader's GLESv2 library
+static void close_swiftshader_glesv2()
+{
+  if (swiftshader_lib_handle) {
+    dlclose(swiftshader_lib_handle);
+    swiftshader_lib_handle = NULL;
+  }
+}
+
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -167,15 +313,22 @@ GLS_DEF_CORE_API(void, glBindTexture, GLenum target, GLuint texture)
 
 GLS_DEF_CORE_API(void, glBlendColor, GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha)
 {
-  (void)red; (void)green; (void)blue; (void)alpha;
-  WARN_STUBBED();
+  if(swiftshader_glBlendColor){
+    swiftshader_glBlendColor(red, green, blue, alpha);
+  } else{
+    (void)red; (void)green; (void)blue; (void)alpha;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glBlendEquation,  GLenum mode )
 {
-  (void)mode;
-  WARN_STUBBED();
+  if(swiftshader_glBlendEquation){
+    swiftshader_glBlendEquation(mode);
+  } else {
+    WARN_STUBBED();
+  }
 }
 
 
@@ -301,24 +454,35 @@ GLS_DEF_CORE_API(void, glCompileShader, GLuint shader)
 
 GLS_DEF_CORE_API(void, glCompressedTexImage2D, GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const GLvoid* data)
 {
-  (void) target; (void) level; (void) internalformat; (void) width; (void) height;
-  (void) border; (void) imageSize; (void) data;
-  WARN_STUBBED();
+  if(swiftshader_glCompressedTexImage2D){
+    swiftshader_glCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
+  } else{
+    (void) target; (void) level; (void) internalformat; (void) width; (void) height;
+    (void) border; (void) imageSize; (void) data;
+    WARN_STUBBED();
+  }
 }
 
 GLS_DEF_CORE_API(void, glCompressedTexSubImage2D, GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const GLvoid* data)
 {
-  (void) target; (void) level; (void) xoffset; (void)yoffset; (void) width; (void) height;
-  (void) format; (void) imageSize; (void) data;
-  WARN_STUBBED();
+  if(swiftshader_glCompressedTexSubImage2D){
+    swiftshader_glCompressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format, imageSize, data);
+  } else {
+    (void) target; (void) level; (void) xoffset; (void)yoffset; (void) width; (void) height; (void) format; (void) imageSize; (void) data;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glCopyTexImage2D, GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border)
 {
-  (void) target; (void) level; (void) internalformat; (void) x; (void) y;
-  (void) width; (void) height; (void) border;
-  WARN_STUBBED();
+  if(swiftshader_glCopyTexImage2D){
+    swiftshader_glCopyTexImage2D(target, level, internalformat, x, y, width, height, border);
+  } else{
+    (void) target; (void) level; (void) internalformat; (void) x; (void) y;
+    (void) width; (void) height; (void) border;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -459,8 +623,12 @@ GLS_DEF_CORE_API(void, glDepthRangef, GLclampf zNear, GLclampf zFar)
 
 GLS_DEF_CORE_API(void, glDetachShader, GLuint program, GLuint shader)
 {
-  (void)program; (void)shader;
-  WARN_STUBBED();
+  if(swiftshader_glDetachShader){
+    swiftshader_glDetachShader(program, shader);
+  } else{
+    (void)program; (void)shader;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -638,7 +806,7 @@ GLS_DEF_CORE_API(void, glEnableVertexAttribArray, GLuint index)
 
 GLS_DEF_CORE_API(void, glFinish, void)
 {
-  WARN_STUBBED(); // wrong semantics
+  if(swiftshader_glFinish) swiftshader_glFinish();
   GLS_SET_COMMAND_PTR(c, glFinish);
   GLS_SEND_PACKET(glFinish);
 }
@@ -675,8 +843,12 @@ GLS_DEF_CORE_API(void, glFramebufferTexture2D, GLenum target, GLenum attachment,
 
 GLS_DEF_CORE_API(void, glFrontFace, GLenum mode)
 {
-  (void)mode;
-  WARN_STUBBED();
+  if(swiftshader_glFrontFace){
+    swiftshader_glFrontFace(mode);
+  } else{
+    (void)mode;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -801,8 +973,16 @@ GLS_DEF_CORE_API(void, glGetActiveUniform, GLuint program, GLuint index, GLsizei
 
 GLS_DEF_CORE_API(void, glGetAttachedShaders, GLuint program, GLsizei maxcount, GLsizei* count, GLuint* shaders)
 {
-  (void)program; (void)maxcount; (void)count; (void)shaders;
-  WARN_STUBBED();
+ if(swiftshader_glGetAttachedShaders){
+    if (!count || !shaders) {
+      WARN_STUBBED();
+      return;
+    }
+    swiftshader_glGetAttachedShaders(program, maxcount, count, shaders);
+  } else {
+    (void)program; (void)maxcount; (void)count; (void)shaders;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -825,15 +1005,22 @@ GLS_DEF_CORE_API(GLint, glGetAttribLocation, GLuint program, const GLchar* name)
 
 GLS_DEF_CORE_API(void, glGetBooleanv, GLenum pname, GLboolean* params)
 {
-  (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetBooleanv){
+    swiftshader_glGetBooleanv(pname, params);
+  } else {
+    (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glGetBufferParameteriv, GLenum target, GLenum pname, GLint* params)
 {
-  (void)target; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetBufferParameteriv){
+    swiftshader_glGetBufferParameteriv(target, pname, params);
+  } else{
+    WARN_STUBBED();
+  }
 }
 
 
@@ -864,8 +1051,12 @@ GLS_DEF_CORE_API(void, glGetFloatv, GLenum name, GLfloat* params)
 
 GLS_DEF_CORE_API(void, glGetFramebufferAttachmentParameteriv, GLenum target, GLenum attachment, GLenum pname, GLint* params)
 {
-  (void)target; (void)attachment; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetFramebufferAttachmentParameteriv){
+    swiftshader_glGetFramebufferAttachmentParameteriv(target, attachment, pname, params);
+  } else {
+    (void)target; (void)attachment; (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -918,8 +1109,12 @@ GLS_DEF_CORE_API(void, glGetProgramInfoLog, GLuint program, GLsizei bufsize, GLs
 
 GLS_DEF_CORE_API(void, glGetRenderbufferParameteriv, GLenum target, GLenum pname, GLint* params)
 {
-  (void)target; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetRenderbufferParameteriv){
+    swiftshader_glGetRenderbufferParameteriv(target, pname, params);
+  } else {
+    (void)target; (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -969,6 +1164,7 @@ GLS_DEF_CORE_API(void, glGetShaderSource, GLuint shader, GLsizei bufsize, GLsize
   (void)shader; (void)bufsize; (void)length; (void)source;
   WARN_STUBBED();
 }
+
 
 // glGetString (with caching)
 
@@ -1083,28 +1279,44 @@ GLS_DEF_CORE_API(const GLubyte*, glGetString, GLenum name)
 
 GLS_DEF_CORE_API(void, glGetTexParameterfv, GLenum target, GLenum pname, GLfloat* params)
 {
-  (void)target; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetTexParameterfv){
+    swiftshader_glGetTexParameterfv(target, pname, params);
+  } else {
+    (void)target; (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glGetTexParameteriv, GLenum target, GLenum pname, GLint* params)
 {
-  (void)target; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetTexParameteriv){
+    swiftshader_glGetTexParameteriv(target, pname, params);
+  } else {
+    (void)target; (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glGetUniformfv, GLuint program, GLint location, GLfloat* params)
 {
-  (void)program; (void)location; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetUniformfv){
+    swiftshader_glGetUniformfv(program, location, params);
+  } else {
+    (void)program; (void)location; (void)params;
+    WARN_STUBBED();
+  }
 }
-
+  
 
 GLS_DEF_CORE_API(void, glGetUniformiv, GLuint program, GLint location, GLint* params)
 {
-  (void)program; (void)location; (void)params;
+  if(swiftshader_glGetUniformiv){
+    swiftshader_glGetUniformiv(program, location, params);
+  } else {
+    (void)program; (void)location; (void)params;
+  }
   WARN_STUBBED();
 }
 
@@ -1132,22 +1344,34 @@ GLS_DEF_CORE_API(int, glGetUniformLocation, GLuint program, const GLchar* name)
 
 GLS_DEF_CORE_API(void, glGetVertexAttribfv, GLuint index, GLenum pname, GLfloat* params)
 {
-  (void)index; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetVertexAttribfv){
+    swiftshader_glGetVertexAttribfv(index, pname, params);
+  } else {
+    (void)index; (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glGetVertexAttribiv, GLuint index, GLenum pname, GLint* params)
 {
-  (void)index; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetVertexAttribiv){
+    swiftshader_glGetVertexAttribiv(index, pname, params);
+  } else {
+    (void)index; (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glGetVertexAttribPointerv, GLuint index, GLenum pname, GLvoid** pointer)
 {
-  (void)index; (void)pname; (void)pointer;
-  WARN_STUBBED();
+  if(swiftshader_glGetVertexAttribPointerv){
+    swiftshader_glGetVertexAttribPointerv(index, pname, pointer);
+  } else {
+    (void)index; (void)pname; (void)pointer;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -1182,50 +1406,72 @@ GLS_DEF_CORE_API(GLboolean, glIsEnabled, GLenum cap)
 
 GLS_DEF_CORE_API(GLboolean, glIsFramebuffer, GLuint framebuffer)
 {
-  (void)framebuffer;
-  WARN_STUBBED();
-  return FALSE;
+  if(swiftshader_glIsFramebuffer){
+    return swiftshader_glIsFramebuffer(framebuffer);
+  } else{
+    (void)framebuffer;
+    WARN_STUBBED();
+    return FALSE;
+  }
 }
 
 
 GLS_DEF_CORE_API(GLboolean, glIsProgram, GLuint program)
 {
-  (void)program;
-  WARN_STUBBED();
-  return FALSE;
+  if(swiftshader_glIsProgram){
+    return swiftshader_glIsProgram(program);
+  } else{
+    (void)program;
+    WARN_STUBBED();
+    return FALSE;
+  }
 }
 
 
 GLS_DEF_CORE_API(GLboolean, glIsRenderbuffer, GLuint renderbuffer)
 {
-  (void)renderbuffer;
-  WARN_STUBBED();
-  return FALSE;
+  if(swiftshader_glIsRenderbuffer){
+    return swiftshader_glIsRenderbuffer(renderbuffer);
+  } else {
+    (void)renderbuffer;
+    WARN_STUBBED();
+    return FALSE;
+  }
 }
 
 
 GLS_DEF_CORE_API(GLboolean, glIsShader, GLuint shader)
 {
-  (void)shader;
-  WARN_STUBBED();
-  return FALSE;
+  if(swiftshader_glIsShader){
+    return swiftshader_glIsShader(shader);
+  } else{
+    (void)shader;
+    WARN_STUBBED();
+    return FALSE;
+  }
 }
 
 
 GLS_DEF_CORE_API(GLboolean, glIsTexture, GLuint texture)
 {
-  (void)texture;
-  WARN_STUBBED();
-  return FALSE;
+  if(swiftshader_glIsTexture){
+    return swiftshader_glIsTexture(texture);
+  } else {
+    (void)texture;
+    WARN_STUBBED();
+    return FALSE;
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glLineWidth, GLfloat width)
 {
-  GLS_SET_COMMAND_PTR(c, glLineWidth);
-  c->width = width;
-  GLS_SEND_PACKET(glLineWidth);
+      GLS_SET_COMMAND_PTR(c, glLineWidth);
+      c->width = width;
+      GLS_SEND_PACKET(glLineWidth);
 }
+
+
 
 
 GLS_DEF_CORE_API(void, glLinkProgram, GLuint program)
@@ -1288,7 +1534,14 @@ GLS_DEF_CORE_API(void, glReadPixels, GLint x, GLint y, GLsizei width, GLsizei he
 
 GLS_DEF_CORE_API(void, glReleaseShaderCompiler, void)
 {
-  WARN_STUBBED();
+  if (swiftshader_glReleaseShaderCompiler) {
+    swiftshader_glReleaseShaderCompiler();
+  }
+  else {
+    
+  } else {
+    WARN_STUBBED();
+  }
 }
 
 
@@ -1305,24 +1558,36 @@ GLS_DEF_CORE_API(void, glRenderbufferStorage, GLenum target, GLenum internalform
 
 GLS_DEF_CORE_API(void, glSampleCoverage, GLclampf value, GLboolean invert)
 {
-  (void)value; (void)invert;
-  WARN_STUBBED();
+  if(swiftshader_glSampleCoverage){
+    swiftshader_glSampleCoverage(value, invert);
+  } else{
+    (void)value; (void)invert;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glScissor, GLint x, GLint y, GLsizei width, GLsizei height)
 {
-  (void)x; (void)y; (void)width; (void)height;
-  WARN_STUBBED();
+  if(swiftshader_glScissor){
+    swiftshader_glScissor(x, y, width, height);
+  } else {
+    (void)x; (void)y; (void)width; (void)height;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glShaderBinary, GLsizei n, const GLuint* shaders, GLenum binaryformat, const GLvoid* binary, GLsizei length)
 {
-  (void)n; (void)shaders; (void)binaryformat; (void)binary; (void)length;
-  WARN_STUBBED();
+  if(swiftshader_glShaderBinary){
+    swiftshader_glShaderBinary(n, shaders, binaryformat, binary, length);
+  } else {
+    (void)n; (void)shaders; (void)binaryformat; (void)binary; (void)length;
+    WARN_STUBBED();
+  }
 }
-
+ 
 
 GLS_DEF_CORE_API(void, glShaderSource, GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length)
 {
@@ -1383,8 +1648,12 @@ GLS_DEF_CORE_API(void, glStencilFunc, GLenum func, GLint r, GLuint m)
 
 GLS_DEF_CORE_API(void, glStencilFuncSeparate, GLenum face, GLenum func, GLint ref, GLuint mask)
 {
-  (void)face; (void)func; (void)ref; (void)mask;
-  WARN_STUBBED();
+  if(swiftshader_glStencilFuncSeparate){
+    swiftshader_glStencilFuncSeparate(face, func, ref, mask);
+  } else {
+    (void)face; (void)func; (void)ref; (void)mask;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -1398,8 +1667,12 @@ GLS_DEF_CORE_API(void, glStencilMask, GLuint mask)
 
 GLS_DEF_CORE_API(void, glStencilMaskSeparate, GLenum face, GLuint mask)
 {
-  (void)face; (void)mask;
-  WARN_STUBBED();
+  if(swiftshader_glStencilMaskSeparate){
+    swiftshader_glStencilMaskSeparate(face, mask);
+  } else {
+    (void)face; (void)mask;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -1415,8 +1688,12 @@ GLS_DEF_CORE_API(void, glStencilOp, GLenum fail, GLenum zfail, GLenum zpass)
 
 GLS_DEF_CORE_API(void, glStencilOpSeparate, GLenum face, GLenum fail, GLenum zfail, GLenum zpass)
 {
-  (void)face; (void)fail; (void)zfail; (void)zpass;
-  WARN_STUBBED();
+  if(swiftshader_glStencilOpSeparate){
+    swiftshader_glStencilOpSeparate(face, fail, zfail, zpass);
+  } else{
+    (void)face; (void)fail; (void)zfail; (void)zpass;
+    WARN_STUBBED();
+  }
 }
 
 
@@ -1444,16 +1721,25 @@ GLS_DEF_CORE_API(void, glTexImage2D, GLenum target, GLint level, GLint internalf
 
 GLS_DEF_CORE_API(void, glTexParameterf, GLenum target, GLenum pname, GLfloat param)
 {
-  (void)target; (void)pname; (void)param;
-  WARN_STUBBED();
+  if(swiftshader_glTexParameterf){
+    swiftshader_glTexParameterf(target, pname, param);
+  } else {
+    (void)target; (void)pname; (void)param;
+    WARN_STUBBED();
+  }
 }
 
 
 GLS_DEF_CORE_API(void, glTexParameterfv, GLenum target, GLenum pname, const GLfloat* params)
 {
-  (void)target; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glTexParameterfv){
+    swiftshader_glTexParameterfv(target, pname, params);
+  } else{
+    (void)target; (void)pname; (void)params;
+    WARN_STUBBED();
+  }
 }
+
 
 
 GLS_DEF_CORE_API(void, glTexParameteri, GLenum target, GLenum pname, GLint param)
@@ -1468,8 +1754,11 @@ GLS_DEF_CORE_API(void, glTexParameteri, GLenum target, GLenum pname, GLint param
 
 GLS_DEF_CORE_API(void, glTexParameteriv, GLenum target, GLenum pname, const GLint* params)
 {
-  (void)target; (void)pname; (void)params;
-  WARN_STUBBED();
+  if(swiftshader_glGetTexParameteriv){
+    swiftshader_glTexParameteriv(target, pname, params);
+  } else {
+    WARN_STUBBED();
+  }
 }
 
 
@@ -1563,8 +1852,12 @@ GLS_DEF_CORE_API(void, glUseProgram, GLuint program)
 
 GLS_DEF_CORE_API(void, glValidateProgram, GLuint program)
 {
-  (void)program;
-  WARN_STUBBED();
+  if(swiftshader_glValidateProgram){
+    swiftshader_glValidateProgram(program);
+  } else {
+    (void)program;
+    WARN_STUBBED();
+  }
 }
 
 
